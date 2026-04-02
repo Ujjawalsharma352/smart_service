@@ -1,10 +1,10 @@
-FROM php:8.1-apache
+FROM php:8.2-apache
 
-# Only required extensions
-RUN docker-php-ext-install mysqli
-
-# Copy files
+# Project copy
 COPY . /var/www/html/
 
-# Enable rewrite
-RUN a2enmod rewrite
+# MySQL extension enable
+RUN docker-php-ext-install mysqli
+
+# Apache port
+EXPOSE 80
