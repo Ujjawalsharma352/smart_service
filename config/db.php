@@ -5,7 +5,7 @@ class Database {
     private $host = "ftpupload.net";
     private $username = "if0_41552769";
     private $password = "udddOIB7vEW3H";
-    private $dbname = "if0_41552769_XXX";
+    private $dbname = "if0_41552769_smartservice";
     private $conn;
     
     public function __construct() {
