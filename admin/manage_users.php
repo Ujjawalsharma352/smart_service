@@ -90,6 +90,7 @@ if (isset($_GET['search'])) {
             <a href="../index.php" class="navbar-brand">
                 🔧 Smart Service Finder
             </a>
+            <button class="mobile-menu-toggle" onclick="toggleMobileMenu()">☰</button>
             <ul class="navbar-nav">
                 <li><a href="dashboard.php">Dashboard</a></li>
                 <li><a href="manage_users.php" class="active">Users</a></li>
@@ -345,6 +346,21 @@ if (isset($_GET['search'])) {
         function closeModal() {
             document.getElementById('deleteModal').style.display = 'none';
         }
+        
+        // Mobile menu toggle
+        function toggleMobileMenu() {
+            const nav = document.querySelector('.navbar-nav');
+            nav.classList.toggle('active');
+        }
+        
+        // Close mobile menu when clicking outside
+        document.addEventListener('click', function(e) {
+            const nav = document.querySelector('.navbar-nav');
+            const toggle = document.querySelector('.mobile-menu-toggle');
+            if (!nav.contains(e.target) && !toggle.contains(e.target)) {
+                nav.classList.remove('active');
+            }
+        });
         
         // Close modal when clicking outside
         document.getElementById('deleteModal').addEventListener('click', function(e) {
