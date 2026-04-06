@@ -76,7 +76,6 @@ $myServices = $conn->query("
                         <select name="lang" class="form-select" onchange="this.form.submit()">
                             <option value="en" <?php echo $lang_code === 'en' ? 'selected' : ''; ?>><?php echo $lang['english']; ?></option>
                             <option value="hi" <?php echo $lang_code === 'hi' ? 'selected' : ''; ?>><?php echo $lang['hindi']; ?></option>
-                            <option value="fr" <?php echo $lang_code === 'fr' ? 'selected' : ''; ?>><?php echo $lang['french']; ?></option>
                         </select>
                     </form>
                 </li>
