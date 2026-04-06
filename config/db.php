@@ -2,10 +2,10 @@
 // Database Configuration for Smart Local Service Finder
 
 class Database {
-    private $host = "sql100.infinityfree.com";
-    private $username = "if0_41552769";
-    private $password = "udddOIB7vEW3H";
-    private $dbname = "if0_41552769_smartservice";
+    private $host = "localhost";
+    private $username = "root";
+    private $password = "";
+    private $dbname = "smart_service";
     private $conn;
     
     public function __construct() {
@@ -13,17 +13,18 @@ class Database {
     }
     
     private function connect() {
-        // Create connection
-        $this->conn = new mysqli($this->host, $this->username, $this->password, $this->dbname);
-
-        // Check connection
-        if ($this->conn->connect_error) {
-            die("Connection failed: " . $this->conn->connect_error);
-        }
-
-        // Set charset to utf8 (more compatible than utf8mb4)
-        if (!$this->conn->set_charset("utf8")) {
-            error_log("Error setting charset: " . $this->conn->error);
+        try {
+            $this->conn = new mysqli($this->host, $this->username, $this->password, $this->dbname);
+            
+            if ($this->conn->connect_error) {
+                die("Connection failed: " . $this->conn->connect_error);
+            }
+            
+            // Set charset to utf8mb4
+            $this->conn->set_charset("utf8mb4");
+            
+        } catch (Exception $e) {
+            die("Database connection error: " . $e->getMessage());
         }
     }
     
