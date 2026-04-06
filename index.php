@@ -1,32 +1,102 @@
 <?php
-require_once 'config/db.php';
+// Enable error reporting for debugging (remove in production)
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 
-// Get featured services
-$featuredServices = $conn->query("
-    SELECT s.*, u.name as provider_name, AVG(r.rating) as average_rating
-    FROM services s
-    JOIN users u ON s.provider_id = u.id
-    LEFT JOIN reviews r ON u.id = r.provider_id
-    WHERE s.status = 'active'
-    GROUP BY s.id
-    ORDER BY RAND()
-    LIMIT 6
-");
+// Smart Service Finder - Homepage
+session_start();
 
-// Get service categories and counts
-$categories = $conn->query("
-    SELECT category, COUNT(*) as count
-    FROM services
-    WHERE status = 'active'
-    GROUP BY category
-    ORDER BY count DESC
-");
+// Initialize database connection with error handling
+$database = null;
+$conn = null;
+$dbError = false;
 
-// Get statistics
-$totalServices = $conn->query("SELECT COUNT(*) as count FROM services WHERE status = 'active'")->fetch_assoc()['count'];
-$totalProviders = $conn->query("SELECT COUNT(*) as count FROM users WHERE role = 'provider'")->fetch_assoc()['count'];
-$totalBookings = $conn->query("SELECT COUNT(*) as count FROM bookings")->fetch_assoc()['count'];
-$totalUsers = $conn->query("SELECT COUNT(*) as count FROM users WHERE role = 'user'")->fetch_assoc()['count'];
+try {
+    require_once 'config/db.php';
+    $database = new Database();
+    $conn = $database->getConnection();
+} catch (Exception $e) {
+    $dbError = true;
+    error_log("Database connection failed: " . $e->getMessage());
+}
+
+// Default values if database fails
+$featuredServices = [];
+$categories = [];
+$stats = [
+    'total_services' => 0,
+    'total_providers' => 0,
+    'total_users' => 0,
+    'total_bookings' => 0
+];
+
+if (!$dbError && $conn) {
+    // Get featured services
+    try {
+        $sql = "SELECT s.*, u.name as provider_name, u.phone, u.address,
+                       COALESCE(AVG(r.rating), 0) as avg_rating,
+                       COUNT(r.id) as review_count
+                FROM services s
+                LEFT JOIN users u ON s.provider_id = u.id
+                LEFT JOIN reviews r ON s.id = r.service_id
+                WHERE s.status = 'approved'
+                GROUP BY s.id
+                ORDER BY s.created_at DESC
+                LIMIT 6";
+
+        $result = $conn->query($sql);
+        if ($result) {
+            while ($row = $result->fetch_assoc()) {
+                $featuredServices[] = $row;
+            }
+        }
+    } catch (Exception $e) {
+        $featuredServices = [];
+    }
+
+    // Get service categories
+    try {
+        $sql = "SELECT DISTINCT category FROM services WHERE status = 'approved' ORDER BY category";
+        $result = $conn->query($sql);
+        if ($result) {
+            while ($row = $result->fetch_assoc()) {
+                $categories[] = $row['category'];
+            }
+        }
+    } catch (Exception $e) {
+        $categories = [];
+    }
+
+    // Get statistics
+    try {
+        // Total services
+        $result = $conn->query("SELECT COUNT(*) as count FROM services WHERE status = 'approved'");
+        if ($result) {
+            $stats['total_services'] = $result->fetch_assoc()['count'];
+        }
+
+        // Total providers
+        $result = $conn->query("SELECT COUNT(*) as count FROM users WHERE role = 'provider'");
+        if ($result) {
+            $stats['total_providers'] = $result->fetch_assoc()['count'];
+        }
+
+        // Total users
+        $result = $conn->query("SELECT COUNT(*) as count FROM users WHERE role = 'user'");
+        if ($result) {
+            $stats['total_users'] = $result->fetch_assoc()['count'];
+        }
+
+        // Total bookings
+        $result = $conn->query("SELECT COUNT(*) as count FROM bookings");
+        if ($result) {
+            $stats['total_bookings'] = $result->fetch_assoc()['count'];
+        }
+    } catch (Exception $e) {
+        // Keep default stats
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -34,7 +104,8 @@ $totalUsers = $conn->query("SELECT COUNT(*) as count FROM users WHERE role = 'us
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Service Finder - Find Local Services</title>
+    <title>Smart Service Finder - Connect with Local Service Providers</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
@@ -46,8 +117,21 @@ $totalUsers = $conn->query("SELECT COUNT(*) as count FROM users WHERE role = 'us
             </a>
             <ul class="navbar-nav">
                 <li><a href="index.php" class="active">Home</a></li>
-                <li><a href="auth/login.php">Login</a></li>
-                <li><a href="auth/register.php">Register</a></li>
+                <li><a href="user/services.php">Services</a></li>
+                <li><a href="auth/register.php">Join as Provider</a></li>
+                <?php if (isset($_SESSION['user_id'])): ?>
+                    <?php if ($_SESSION['role'] === 'admin'): ?>
+                        <li><a href="admin/dashboard.php">Dashboard</a></li>
+                    <?php elseif ($_SESSION['role'] === 'provider'): ?>
+                        <li><a href="provider/dashboard.php">Dashboard</a></li>
+                    <?php else: ?>
+                        <li><a href="user/dashboard.php">Dashboard</a></li>
+                    <?php endif; ?>
+                    <li><a href="auth/logout.php">Logout</a></li>
+                <?php else: ?>
+                    <li><a href="auth/login.php">Login</a></li>
+                    <li><a href="auth/register.php">Register</a></li>
+                <?php endif; ?>
             </ul>
         </div>
     </nav>
@@ -56,21 +140,11 @@ $totalUsers = $conn->query("SELECT COUNT(*) as count FROM users WHERE role = 'us
     <section class="hero">
         <div class="container">
             <div class="hero-content">
-                <h1 class="hero-title">Find Trusted Local Services</h1>
-                <p class="hero-subtitle">Connect with verified service providers in your area. From plumbing to tutoring, we've got you covered.</p>
-                
-                <!-- Quick Search -->
-                <div class="hero-search">
-                    <form method="GET" action="user/services.php" class="search-form">
-                        <input type="text" name="search" placeholder="Search for services, providers, or categories..." class="search-input">
-                        <button type="submit" class="btn btn-primary btn-lg">Search Services</button>
-                    </form>
-                </div>
-                
-                <!-- Quick Links -->
-                <div class="hero-links">
-                    <a href="auth/register.php" class="btn btn-secondary btn-lg">Join as Customer</a>
-                    <a href="auth/register.php" class="btn btn-outline btn-lg">Become a Provider</a>
+                <h1>Find Trusted Local Services</h1>
+                <p>Connect with verified service providers in your area. Book appointments, compare prices, and read reviews from real customers.</p>
+                <div class="hero-actions">
+                    <a href="user/services.php" class="btn btn-primary btn-lg">Browse Services</a>
+                    <a href="auth/register.php" class="btn btn-secondary btn-lg">Become a Provider</a>
                 </div>
             </div>
         </div>
@@ -81,154 +155,118 @@ $totalUsers = $conn->query("SELECT COUNT(*) as count FROM users WHERE role = 'us
         <div class="container">
             <div class="stats-grid">
                 <div class="stat-card">
-                    <div class="stat-value"><?php echo $totalServices; ?>+</div>
-                    <div class="stat-label">Active Services</div>
-                </div>
-                <div class="stat-card success">
-                    <div class="stat-value"><?php echo $totalProviders; ?>+</div>
-                    <div class="stat-label">Verified Providers</div>
-                </div>
-                <div class="stat-card warning">
-                    <div class="stat-value"><?php echo $totalBookings; ?>+</div>
-                    <div class="stat-label">Services Booked</div>
+                    <div class="stat-number"><?php echo number_format($stats['total_services']); ?></div>
+                    <div class="stat-label">Services Available</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value"><?php echo $totalUsers; ?>+</div>
+                    <div class="stat-number"><?php echo number_format($stats['total_providers']); ?></div>
+                    <div class="stat-label">Verified Providers</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number"><?php echo number_format($stats['total_users']); ?></div>
                     <div class="stat-label">Happy Customers</div>
                 </div>
+                <div class="stat-card">
+                    <div class="stat-number"><?php echo number_format($stats['total_bookings']); ?></div>
+                    <div class="stat-label">Bookings Completed</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Featured Services -->
+    <section class="services-section">
+        <div class="container">
+            <div class="section-header">
+                <h2>Featured Services</h2>
+                <p>Discover popular services from our trusted providers</p>
+            </div>
+
+            <?php if (!empty($featuredServices)): ?>
+                <div class="services-grid">
+                    <?php foreach ($featuredServices as $service): ?>
+                        <div class="service-card">
+                            <div class="service-image">
+                                <img src="assets/images/service-placeholder.jpg" alt="<?php echo htmlspecialchars($service['title']); ?>" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDMwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIzMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjRjNGNEY2Ii8+Cjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iMC4zZW0iIGZpbGw9IiM5Q0EzQUYiIGZvbnQtc2l6ZT0iMTgiPk5vIEltYWdlPC90ZXh0Pgo8L3N2Zz4=';">
+                            </div>
+                            <div class="service-content">
+                                <h3><?php echo htmlspecialchars($service['title']); ?></h3>
+                                <p class="service-category"><?php echo htmlspecialchars($service['category']); ?></p>
+                                <p class="service-description"><?php echo htmlspecialchars(substr($service['description'], 0, 100)) . '...'; ?></p>
+                                <div class="service-meta">
+                                    <div class="service-rating">
+                                        <?php
+                                        $rating = round($service['avg_rating'], 1);
+                                        for ($i = 1; $i <= 5; $i++) {
+                                            if ($i <= $rating) {
+                                                echo '<i class="fas fa-star"></i>';
+                                            } elseif ($i - 0.5 <= $rating) {
+                                                echo '<i class="fas fa-star-half-alt"></i>';
+                                            } else {
+                                                echo '<i class="far fa-star"></i>';
+                                            }
+                                        }
+                                        ?>
+                                        <span>(<?php echo $service['review_count']; ?>)</span>
+                                    </div>
+                                    <div class="service-price">$<?php echo number_format($service['price'], 2); ?></div>
+                                </div>
+                                <div class="service-provider">
+                                    <i class="fas fa-user"></i>
+                                    <?php echo htmlspecialchars($service['provider_name']); ?>
+                                </div>
+                                <a href="user/book_service.php?id=<?php echo $service['id']; ?>" class="btn btn-primary btn-sm">Book Now</a>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php else: ?>
+                <div class="no-services">
+                    <p>No services available at the moment. Check back soon!</p>
+                </div>
+            <?php endif; ?>
+
+            <div class="section-footer">
+                <a href="user/services.php" class="btn btn-secondary">View All Services</a>
             </div>
         </div>
     </section>
 
     <!-- Categories Section -->
+    <?php if (!empty($categories)): ?>
     <section class="categories-section">
         <div class="container">
             <div class="section-header">
-                <h2>Browse by Category</h2>
-                <p>Find services organized by professional categories</p>
+                <h2>Service Categories</h2>
+                <p>Find services by category</p>
             </div>
-            
             <div class="categories-grid">
-                <?php while ($category = $categories->fetch_assoc()): ?>
-                    <a href="user/services.php?category=<?php echo $category['category']; ?>" class="category-card">
+                <?php foreach ($categories as $category): ?>
+                    <a href="user/services.php?category=<?php echo urlencode($category); ?>" class="category-card">
                         <div class="category-icon">
-                            <?php
-                            $icons = [
-                                'plumber' => '🔧',
-                                'tutor' => '📚',
-                                'electrician' => '⚡',
-                                'carpenter' => '🔨',
-                                'cleaner' => '🧹',
-                                'painter' => '🎨',
-                                'mechanic' => '🚗',
-                                'other' => '📦'
-                            ];
-                            echo $icons[$category['category']] ?? '🔧';
-                            ?>
+                            <i class="fas fa-tools"></i>
                         </div>
-                        <h3><?php echo ucfirst($category['category']); ?></h3>
-                        <p><?php echo $category['count']; ?> services available</p>
+                        <h3><?php echo htmlspecialchars($category); ?></h3>
                     </a>
-                <?php endwhile; ?>
+                <?php endforeach; ?>
             </div>
         </div>
     </section>
-
-    <!-- Featured Services Section -->
-    <section class="featured-section">
-        <div class="container">
-            <div class="section-header">
-                <h2>Featured Services</h2>
-                <p>Top-rated services from our trusted providers</p>
-                <a href="user/services.php" class="btn btn-primary">View All Services</a>
-            </div>
-            
-            <div class="grid grid-cols-3 gap-6">
-                <?php if ($featuredServices->num_rows > 0): ?>
-                    <?php while ($service = $featuredServices->fetch_assoc()): ?>
-                        <div class="service-card">
-                            <div class="service-card-header">
-                                <div class="service-category"><?php echo htmlspecialchars($service['category']); ?></div>
-                                <h3><?php echo htmlspecialchars($service['title']); ?></h3>
-                            </div>
-                            <div class="service-card-body">
-                                <p><?php echo htmlspecialchars(substr($service['description'], 0, 120)) . '...'; ?></p>
-                                
-                                <div class="service-price">$<?php echo number_format($service['price'], 2); ?></div>
-                                
-                                <?php if ($service['average_rating']): ?>
-                                    <div class="flex items-center gap-1">
-                                        <span class="star">★</span>
-                                        <span><?php echo number_format($service['average_rating'], 1); ?></span>
-                                    </div>
-                                <?php endif; ?>
-                                
-                                <div class="service-provider">
-                                    <div class="provider-avatar">
-                                        <?php echo strtoupper(substr($service['provider_name'], 0, 1)); ?>
-                                    </div>
-                                    <div>
-                                        <div class="font-medium"><?php echo htmlspecialchars($service['provider_name']); ?></div>
-                                        <div class="text-sm text-secondary">Professional Provider</div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="card-footer">
-                                <a href="auth/login.php" class="btn btn-primary btn-full">Login to Book</a>
-                            </div>
-                        </div>
-                    <?php endwhile; ?>
-                <?php else: ?>
-                    <div class="col-span-3 text-center">
-                        <p class="text-secondary">No featured services available at the moment.</p>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </div>
-    </section>
-
-    <!-- How It Works Section -->
-    <section class="how-it-works">
-        <div class="container">
-            <div class="section-header">
-                <h2>How It Works</h2>
-                <p>Get started with Smart Service Finder in 4 simple steps</p>
-            </div>
-            
-            <div class="steps-grid">
-                <div class="step-card">
-                    <div class="step-number">1</div>
-                    <h3>Sign Up</h3>
-                    <p>Create your account as a customer or provider</p>
-                </div>
-                <div class="step-card">
-                    <div class="step-number">2</div>
-                    <h3>Browse Services</h3>
-                    <p>Explore available services by category or search</p>
-                </div>
-                <div class="step-card">
-                    <div class="step-number">3</div>
-                    <h3>Book Service</h3>
-                    <p>Select your preferred service and schedule booking</p>
-                </div>
-                <div class="step-card">
-                    <div class="step-number">4</div>
-                    <h3>Get Service Done</h3>
-                    <p>Provider completes the service and you leave a review</p>
-                </div>
-            </div>
-        </div>
-    </section>
+    <?php endif; ?>
 
     <!-- CTA Section -->
     <section class="cta-section">
         <div class="container">
             <div class="cta-content">
                 <h2>Ready to Get Started?</h2>
-                <p>Join thousands of satisfied customers and trusted service providers</p>
-                <div class="cta-buttons">
-                    <a href="auth/register.php" class="btn btn-primary btn-lg">Join Now</a>
-                    <a href="user/services.php" class="btn btn-outline btn-lg">Browse Services</a>
+                <p>Join thousands of satisfied customers and service providers on our platform.</p>
+                <div class="cta-actions">
+                    <?php if (!isset($_SESSION['user_id'])): ?>
+                        <a href="auth/register.php" class="btn btn-primary btn-lg">Sign Up Free</a>
+                        <a href="auth/login.php" class="btn btn-outline btn-lg">Login</a>
+                    <?php else: ?>
+                        <a href="user/services.php" class="btn btn-primary btn-lg">Browse Services</a>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -240,39 +278,25 @@ $totalUsers = $conn->query("SELECT COUNT(*) as count FROM users WHERE role = 'us
             <div class="footer-content">
                 <div class="footer-section">
                     <h3>Smart Service Finder</h3>
-                    <p>Your trusted platform for finding and booking local services. Connect with verified providers and get quality service.</p>
+                    <p>Connecting customers with trusted local service providers since 2024.</p>
                 </div>
-                
                 <div class="footer-section">
                     <h4>Quick Links</h4>
                     <ul>
-                        <li><a href="index.php">Home</a></li>
                         <li><a href="user/services.php">Browse Services</a></li>
-                        <li><a href="auth/login.php">Login</a></li>
-                        <li><a href="auth/register.php">Register</a></li>
-                    </ul>
-                </div>
-                
-                <div class="footer-section">
-                    <h4>For Providers</h4>
-                    <ul>
                         <li><a href="auth/register.php">Become a Provider</a></li>
-                        <li><a href="#">Provider Guidelines</a></li>
-                        <li><a href="#">Success Stories</a></li>
+                        <li><a href="auth/login.php">Login</a></li>
                     </ul>
                 </div>
-                
                 <div class="footer-section">
                     <h4>Support</h4>
                     <ul>
                         <li><a href="#">Help Center</a></li>
                         <li><a href="#">Contact Us</a></li>
                         <li><a href="#">Terms of Service</a></li>
-                        <li><a href="#">Privacy Policy</a></li>
                     </ul>
                 </div>
             </div>
-            
             <div class="footer-bottom">
                 <p>&copy; 2024 Smart Service Finder. All rights reserved.</p>
             </div>
@@ -282,271 +306,325 @@ $totalUsers = $conn->query("SELECT COUNT(*) as count FROM users WHERE role = 'us
     <style>
         /* Hero Section */
         .hero {
-            background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 6rem 0;
+            padding: 100px 0 80px;
             text-align: center;
         }
-        
-        .hero-title {
-            font-size: 3rem;
+
+        .hero-content h1 {
+            font-size: 3.5rem;
             font-weight: 700;
-            margin-bottom: 1rem;
+            margin-bottom: 1.5rem;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
-        
-        .hero-subtitle {
+
+        .hero-content p {
             font-size: 1.25rem;
             margin-bottom: 2rem;
             opacity: 0.9;
-        }
-        
-        .hero-search {
             max-width: 600px;
-            margin: 0 auto 2rem;
+            margin-left: auto;
+            margin-right: auto;
         }
-        
-        .search-form {
-            display: flex;
-            gap: 1rem;
-            background: white;
-            padding: 0.5rem;
-            border-radius: var(--radius-lg);
-            box-shadow: var(--shadow-lg);
-        }
-        
-        .search-input {
-            flex: 1;
-            border: none;
-            padding: 1rem;
-            font-size: 1rem;
-            border-radius: var(--radius);
-        }
-        
-        .hero-links {
+
+        .hero-actions {
             display: flex;
             gap: 1rem;
             justify-content: center;
             flex-wrap: wrap;
         }
-        
-        .btn-outline {
-            background: transparent;
-            color: white;
-            border: 2px solid white;
-        }
-        
-        .btn-outline:hover {
-            background: white;
-            color: var(--primary-color);
-        }
-        
-        /* Sections */
+
+        /* Statistics Section */
         .stats-section {
-            padding: 4rem 0;
-            background: var(--bg-secondary);
+            padding: 60px 0;
+            background: #f8fafc;
         }
-        
-        .categories-section,
-        .featured-section,
-        .how-it-works {
-            padding: 4rem 0;
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
         }
-        
+
+        .stat-card {
+            text-align: center;
+            padding: 2rem;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-number {
+            font-size: 3rem;
+            font-weight: 700;
+            color: #3b82f6;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            font-size: 1.1rem;
+            color: #6b7280;
+            font-weight: 500;
+        }
+
+        /* Services Section */
+        .services-section {
+            padding: 80px 0;
+        }
+
         .section-header {
             text-align: center;
             margin-bottom: 3rem;
         }
-        
+
         .section-header h2 {
             font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: #1f2937;
+        }
+
+        .section-header p {
+            font-size: 1.1rem;
+            color: #6b7280;
+        }
+
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .service-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .service-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+
+        .service-image {
+            height: 200px;
+            background: #f3f4f6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .service-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .service-content {
+            padding: 1.5rem;
+        }
+
+        .service-content h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #1f2937;
+        }
+
+        .service-category {
+            color: #3b82f6;
+            font-weight: 500;
             margin-bottom: 0.5rem;
         }
-        
-        .section-header p {
-            font-size: 1.125rem;
-            color: var(--text-secondary);
+
+        .service-description {
+            color: #6b7280;
+            margin-bottom: 1rem;
+            line-height: 1.5;
+        }
+
+        .service-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             margin-bottom: 1rem;
         }
-        
-        /* Categories */
+
+        .service-rating {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .service-rating i {
+            color: #fbbf24;
+        }
+
+        .service-price {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #059669;
+        }
+
+        .service-provider {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #6b7280;
+            margin-bottom: 1rem;
+        }
+
+        .section-footer {
+            text-align: center;
+        }
+
+        /* Categories Section */
+        .categories-section {
+            padding: 80px 0;
+            background: #f8fafc;
+        }
+
         .categories-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 1.5rem;
         }
-        
+
         .category-card {
-            display: block;
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
             text-align: center;
-            padding: 2rem 1rem;
-            background: var(--bg-primary);
-            border-radius: var(--radius-lg);
-            box-shadow: var(--shadow-sm);
             text-decoration: none;
-            color: var(--text-primary);
-            transition: all 0.3s ease;
-            border: 1px solid var(--border-color);
+            color: inherit;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
-        
+
         .category-card:hover {
-            transform: translateY(-4px);
-            box-shadow: var(--shadow-md);
-            border-color: var(--primary-color);
+            transform: translateY(-3px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         }
-        
+
         .category-icon {
-            font-size: 3rem;
+            font-size: 2rem;
+            color: #3b82f6;
             margin-bottom: 1rem;
         }
-        
+
         .category-card h3 {
-            font-size: 1.25rem;
-            margin-bottom: 0.5rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #1f2937;
         }
-        
-        .category-card p {
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-            margin: 0;
-        }
-        
-        /* How It Works */
-        .steps-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 2rem;
-        }
-        
-        .step-card {
-            text-align: center;
-            padding: 2rem;
-            background: var(--bg-primary);
-            border-radius: var(--radius-lg);
-            box-shadow: var(--shadow-sm);
-        }
-        
-        .step-number {
-            width: 60px;
-            height: 60px;
-            background: var(--primary-color);
-            color: white;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-            font-weight: 700;
-            margin: 0 auto 1rem;
-        }
-        
-        .step-card h3 {
-            font-size: 1.25rem;
-            margin-bottom: 0.5rem;
-        }
-        
-        .step-card p {
-            color: var(--text-secondary);
-            margin: 0;
-        }
-        
+
         /* CTA Section */
         .cta-section {
-            background: linear-gradient(135deg, var(--primary-dark), var(--primary-color));
+            padding: 80px 0;
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
             color: white;
-            padding: 4rem 0;
             text-align: center;
         }
-        
+
         .cta-content h2 {
             font-size: 2.5rem;
+            font-weight: 700;
             margin-bottom: 1rem;
         }
-        
+
         .cta-content p {
-            font-size: 1.125rem;
+            font-size: 1.1rem;
             margin-bottom: 2rem;
             opacity: 0.9;
         }
-        
-        .cta-buttons {
+
+        .cta-actions {
             display: flex;
             gap: 1rem;
             justify-content: center;
             flex-wrap: wrap;
         }
-        
+
         /* Footer */
         .footer {
-            background: var(--text-primary);
+            background: #1f2937;
             color: white;
-            padding: 3rem 0 1rem;
+            padding: 60px 0 30px;
         }
-        
+
         .footer-content {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
             gap: 2rem;
             margin-bottom: 2rem;
         }
-        
-        .footer-section h3,
-        .footer-section h4 {
+
+        .footer-section h3 {
+            font-size: 1.5rem;
+            font-weight: 700;
             margin-bottom: 1rem;
         }
-        
+
+        .footer-section h4 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
         .footer-section ul {
             list-style: none;
             padding: 0;
         }
-        
+
         .footer-section ul li {
             margin-bottom: 0.5rem;
         }
-        
-        .footer-section a {
-            color: var(--text-light);
+
+        .footer-section ul li a {
+            color: #9ca3af;
             text-decoration: none;
+            transition: color 0.3s ease;
         }
-        
-        .footer-section a:hover {
+
+        .footer-section ul li a:hover {
             color: white;
         }
-        
+
         .footer-bottom {
-            text-align: center;
+            border-top: 1px solid #374151;
             padding-top: 2rem;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            color: var(--text-light);
+            text-align: center;
+            color: #9ca3af;
         }
-        
-        /* Responsive */
+
+        /* Responsive Design */
         @media (max-width: 768px) {
-            .hero-title {
-                font-size: 2rem;
+            .hero-content h1 {
+                font-size: 2.5rem;
             }
-            
-            .hero-subtitle {
-                font-size: 1rem;
-            }
-            
-            .search-form {
+
+            .hero-actions {
                 flex-direction: column;
+                align-items: center;
             }
-            
-            .section-header h2 {
-                font-size: 2rem;
-            }
-            
-            .cta-content h2 {
-                font-size: 2rem;
-            }
-            
-            .steps-grid {
+
+            .services-grid {
                 grid-template-columns: 1fr;
+            }
+
+            .categories-grid {
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            }
+
+            .cta-actions {
+                flex-direction: column;
+                align-items: center;
             }
         }
     </style>
-
-    <script src="assets/js/main.js"></script>
 </body>
 </html>

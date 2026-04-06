@@ -1,0 +1,35 @@
+RewriteEngine On
+
+# Handle API routes
+RewriteRule ^api/(.*)$ api/index.php?path=$1 [QSA,L]
+
+# Handle other PHP files
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]
+
+# Security headers
+<Files *.php>
+    Header set X-Content-Type-Options nosniff
+</Files>
+
+# PHP settings for shared hosting
+php_value upload_max_filesize 10M
+php_value post_max_size 10M
+php_value max_execution_time 300
+php_value memory_limit 128M
+
+# Error handling
+ErrorDocument 404 /index.php
+ErrorDocument 500 /index.php
+
+# Directory protection
+<Files "config/db.php">
+    Order Deny,Allow
+    Deny from all
+</Files>
+
+<Files "database.sql">
+    Order Deny,Allow
+    Deny from all
+</Files>

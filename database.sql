@@ -1,11 +1,8 @@
 -- Smart Local Service Finder Database Schema
--- Created for production-level service marketplace
-
-CREATE DATABASE IF NOT EXISTS smart_service;
-USE smart_service;
+-- Compatible with InfinityFree MySQL
 
 -- Users table (for all roles: user, provider, admin)
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     email VARCHAR(100) UNIQUE NOT NULL,
@@ -17,20 +14,20 @@ CREATE TABLE users (
 );
 
 -- Services table (providers add their services)
-CREATE TABLE services (
+CREATE TABLE IF NOT EXISTS services (
     id INT AUTO_INCREMENT PRIMARY KEY,
     provider_id INT NOT NULL,
     title VARCHAR(200) NOT NULL,
     description TEXT,
     price DECIMAL(10,2) NOT NULL,
     category ENUM('plumber', 'tutor', 'electrician', 'carpenter', 'cleaner', 'painter', 'mechanic', 'other') NOT NULL,
-    status ENUM('active', 'inactive') DEFAULT 'active',
+    status ENUM('approved', 'pending', 'rejected') DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (provider_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Bookings table (users book services)
-CREATE TABLE bookings (
+CREATE TABLE IF NOT EXISTS bookings (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     provider_id INT NOT NULL,
@@ -46,17 +43,31 @@ CREATE TABLE bookings (
 );
 
 -- Reviews table (users review providers)
-CREATE TABLE reviews (
+CREATE TABLE IF NOT EXISTS reviews (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     provider_id INT NOT NULL,
     booking_id INT NOT NULL,
-    rating INT CHECK (rating >= 1 AND rating <= 5),
+    rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
     comment TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (provider_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE
+);
+
+-- Notifications table for real-time updates
+CREATE TABLE IF NOT EXISTS notifications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    role ENUM('user', 'provider', 'admin') NOT NULL,
+    message TEXT NOT NULL,
+    type ENUM('info', 'success', 'warning', 'error', 'booking', 'status') DEFAULT 'info',
+    booking_id INT NULL,
+    is_read TINYINT(1) DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Insert default admin user (password: admin123)
