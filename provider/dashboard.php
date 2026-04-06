@@ -1,8 +1,19 @@
 <?php
 require_once '../config/db.php';
+require_once '../notifications/notification_functions.php';
+require_once '../notifications/language_helper.php';
 requireRole('provider');
 
 $providerId = getUserId();
+
+// Load language dynamically
+$lang_code = $_SESSION['lang'] ?? 'en';
+$lang_file = "../lang/$lang_code.php";
+if (file_exists($lang_file)) {
+    require_once $lang_file;
+} else {
+    require_once '../lang/en.php';
+}
 
 // Get provider statistics
 $totalServices = $conn->query("SELECT COUNT(*) as count FROM services WHERE provider_id = $providerId")->fetch_assoc()['count'];
@@ -36,11 +47,15 @@ $myServices = $conn->query("
 ?>
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?php echo $lang_code; ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Provider Dashboard - Smart Service Finder</title>
+    <meta name="user-id" content="<?php echo $providerId; ?>">
+    <meta name="user-role" content="provider">
+    <title><?php echo $lang['dashboard']; ?> - Smart Service Finder</title>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="../assets/css/style.css">
 </head>
 <body>
@@ -51,10 +66,40 @@ $myServices = $conn->query("
                 🔧 Smart Service Finder
             </a>
             <ul class="navbar-nav">
-                <li><a href="dashboard.php" class="active">Dashboard</a></li>
-                <li><a href="add_service.php">Add Service</a></li>
-                <li><a href="manage_bookings.php">Bookings</a></li>
-                <li><a href="../auth/logout.php">Logout</a></li>
+                <li><a href="dashboard.php" class="active"><?php echo $lang['dashboard']; ?></a></li>
+                <li><a href="add_service.php"><?php echo $lang['add_service']; ?></a></li>
+                <li><a href="manage_bookings.php"><?php echo $lang['bookings']; ?></a></li>
+                
+                <!-- Language Switcher -->
+                <li class="language-switcher">
+                    <form method="post" action="../notifications/language_helper.php" style="margin: 0;">
+                        <select name="lang" class="form-select" onchange="this.form.submit()">
+                            <option value="en" <?php echo $lang_code === 'en' ? 'selected' : ''; ?>><?php echo $lang['english']; ?></option>
+                            <option value="hi" <?php echo $lang_code === 'hi' ? 'selected' : ''; ?>><?php echo $lang['hindi']; ?></option>
+                            <option value="fr" <?php echo $lang_code === 'fr' ? 'selected' : ''; ?>><?php echo $lang['french']; ?></option>
+                        </select>
+                    </form>
+                </li>
+                
+                <!-- Notification Box -->
+                <li class="notification-wrapper">
+                    <button type="button" class="notification-button" id="notification-bell">
+                        <i class="fas fa-bell"></i>
+                        <?php echo $lang['notifications']; ?>
+                        <span class="notification-badge" id="notification-badge" style="display: none;">0</span>
+                    </button>
+                    <div class="notification-dropdown" id="notification-dropdown">
+                        <div class="notification-header">
+                            <h3><?php echo $lang['notifications']; ?></h3>
+                            <button type="button" class="notification-close" id="notification-close">×</button>
+                        </div>
+                        <div class="notification-list" id="notification-list">
+                            <div class="loading"><?php echo $lang['loading']; ?></div>
+                        </div>
+                    </div>
+                </li>
+                
+                <li><a href="../auth/logout.php"><?php echo $lang['logout']; ?></a></li>
             </ul>
         </div>
     </nav>
@@ -63,46 +108,46 @@ $myServices = $conn->query("
         <!-- Sidebar -->
         <aside class="sidebar">
             <ul class="sidebar-nav">
-                <li><a href="dashboard.php" class="active">📊 Dashboard</a></li>
-                <li><a href="add_service.php">➕ Add Service</a></li>
-                <li><a href="manage_bookings.php">📅 Manage Bookings</a></li>
-                <li><a href="my_services.php">🔧 My Services</a></li>
-                <li><a href="profile.php">👤 Profile</a></li>
-                <li><a href="../auth/logout.php">🚪 Logout</a></li>
+                <li><a href="dashboard.php" class="active"><?php echo $lang['dashboard']; ?></a></li>
+                <li><a href="add_service.php"><?php echo $lang['add_service']; ?></a></li>
+                <li><a href="manage_bookings.php"><?php echo $lang['manage_bookings']; ?></a></li>
+                <li><a href="my_services.php"><?php echo $lang['my_services']; ?></a></li>
+                <li><a href="profile.php"><?php echo $lang['profile']; ?></a></li>
+                <li><a href="../auth/logout.php"><?php echo $lang['logout']; ?></a></li>
             </ul>
         </aside>
 
         <!-- Main Content -->
         <main class="main-content">
             <div class="page-header">
-                <h1 class="page-title">Provider Dashboard</h1>
-                <p class="page-subtitle">Welcome back, <?php echo $_SESSION['user_name']; ?>! Manage your services and track your earnings.</p>
+                <h1 class="page-title"><?php echo $lang['dashboard']; ?></h1>
+                <p class="page-subtitle"><?php echo $lang['welcome']; ?>, <?php echo $_SESSION['user_name']; ?>! <?php echo $lang['provider_subtitle']; ?></p>
             </div>
 
             <!-- Statistics Cards -->
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-value"><?php echo $totalServices; ?></div>
-                    <div class="stat-label">My Services</div>
+                    <div class="stat-label"><?php echo $lang['my_services']; ?></div>
                 </div>
                 <div class="stat-card success">
                     <div class="stat-value"><?php echo $totalBookings; ?></div>
-                    <div class="stat-label">Total Bookings</div>
+                    <div class="stat-label"><?php echo $lang['total']; ?> <?php echo $lang['bookings']; ?></div>
                 </div>
                 <div class="stat-card warning">
                     <div class="stat-value"><?php echo $pendingBookings; ?></div>
-                    <div class="stat-label">Pending Bookings</div>
+                    <div class="stat-label"><?php echo $lang['pending']; ?> <?php echo $lang['bookings']; ?></div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-value">$<?php echo number_format($totalEarnings, 2); ?></div>
-                    <div class="stat-label">Total Earnings</div>
+                    <div class="stat-label"><?php echo $lang['total']; ?> <?php echo $lang['earnings']; ?></div>
                 </div>
             </div>
 
             <div class="stats-grid">
                 <div class="stat-card success">
                     <div class="stat-value"><?php echo $completedBookings; ?></div>
-                    <div class="stat-label">Completed Jobs</div>
+                    <div class="stat-label"><?php echo $lang['completed']; ?> <?php echo $lang['jobs']; ?></div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-value">
@@ -112,14 +157,18 @@ $myServices = $conn->query("
                                 <span><?php echo number_format($averageRating, 1); ?></span>
                             </div>
                         <?php else: ?>
-                            <span class="text-light">No rating</span>
+                            <span class="text-light"><?php echo $lang['no_rating']; ?></span>
                         <?php endif; ?>
                     </div>
-                    <div class="stat-label">Average Rating</div>
+                    <div class="stat-label"><?php echo $lang['average']; ?> <?php echo $lang['rating']; ?></div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-value"><?php echo round(($completedBookings / max($totalBookings, 1)) * 100, 1); ?>%</div>
-                    <div class="stat-label">Completion Rate</div>
+                    <div class="stat-label"><?php echo $lang['completion']; ?> <?php echo $lang['rate']; ?></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">$<?php echo $totalBookings > 0 ? number_format($totalEarnings / $totalBookings, 2) : '0.00'; ?></div>
+                    <div class="stat-label"><?php echo $lang['average']; ?> <?php echo $lang['earning']; ?></div>
                 </div>
             </div>
 
@@ -127,9 +176,9 @@ $myServices = $conn->query("
                 <!-- Recent Bookings -->
                 <div class="card">
                     <div class="card-header">
-                        <h3>Recent Bookings</h3>
+                        <h3><?php echo $lang['recent']; ?> <?php echo $lang['bookings']; ?></h3>
                         <?php if ($pendingBookings > 0): ?>
-                            <span class="badge badge-warning"><?php echo $pendingBookings; ?> pending</span>
+                            <span class="badge badge-warning"><?php echo $pendingBookings; ?> <?php echo $lang['pending']; ?></span>
                         <?php endif; ?>
                     </div>
                     <div class="card-body">
@@ -137,10 +186,10 @@ $myServices = $conn->query("
                             <table class="table">
                                 <thead>
                                     <tr>
-                                        <th>Customer</th>
-                                        <th>Service</th>
-                                        <th>Status</th>
-                                        <th>Date</th>
+                                        <th><?php echo $lang['customer']; ?></th>
+                                        <th><?php echo $lang['service']; ?></th>
+                                        <th><?php echo $lang['status']; ?></th>
+                                        <th><?php echo $lang['date']; ?></th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -159,7 +208,7 @@ $myServices = $conn->query("
                                                         <?php echo ucfirst($booking['status']); ?>
                                                     </span>
                                                 </td>
-                                                <td><?php echo date('M j, Y', strtotime($booking['booking_date'])); ?></td>
+                                                <td><?php echo date('M j, Y', strtotime($booking['created_at'])); ?></td>
                                             </tr>
                                         <?php endwhile; ?>
                                     <?php else: ?>
@@ -174,7 +223,7 @@ $myServices = $conn->query("
                         </div>
                         <?php if ($recentBookings->num_rows > 0): ?>
                             <div class="card-footer">
-                                <a href="manage_bookings.php" class="btn btn-primary">View All Bookings</a>
+                                <a href="manage_bookings.php" class="btn btn-primary"><?php echo $lang['view_details']; ?></a>
                             </div>
                         <?php endif; ?>
                     </div>
@@ -183,8 +232,8 @@ $myServices = $conn->query("
                 <!-- My Services -->
                 <div class="card">
                     <div class="card-header">
-                        <h3>My Services</h3>
-                        <a href="add_service.php" class="btn btn-primary btn-sm">Add New</a>
+                        <h3><?php echo $lang['my_services']; ?></h3>
+                        <a href="add_service.php" class="btn btn-primary btn-sm"><?php echo $lang['add']; ?></a>
                     </div>
                     <div class="card-body">
                         <div class="table-container">
@@ -238,13 +287,13 @@ $myServices = $conn->query("
             <!-- Quick Actions -->
             <div class="card mt-8">
                 <div class="card-header">
-                    <h3>Quick Actions</h3>
+                    <h3><?php echo $lang['quick_actions']; ?></h3>
                 </div>
                 <div class="card-body">
                     <div class="flex gap-4">
-                        <a href="add_service.php" class="btn btn-primary">Add New Service</a>
-                        <a href="manage_bookings.php" class="btn btn-success">Manage Bookings</a>
-                        <a href="my_services.php" class="btn btn-secondary">View All Services</a>
+                        <a href="add_service.php" class="btn btn-primary"><?php echo $lang['add_service']; ?></a>
+                        <a href="manage_bookings.php" class="btn btn-success"><?php echo $lang['manage_bookings']; ?></a>
+                        <a href="my_services.php" class="btn btn-secondary"><?php echo $lang['my_services']; ?></a>
                     </div>
                 </div>
             </div>
@@ -252,13 +301,54 @@ $myServices = $conn->query("
             <!-- Pending Bookings Alert -->
             <?php if ($pendingBookings > 0): ?>
                 <div class="alert alert-warning mt-8">
-                    <strong>⚠️ You have <?php echo $pendingBookings; ?> pending booking(s)!</strong> 
-                    Please review and respond to them promptly. 
-                    <a href="manage_bookings.php" class="btn btn-warning btn-sm ml-4">View Bookings</a>
+                    <strong>⚠️ You have <?php echo $pendingBookings; ?> <?php echo $lang['pending']; ?> <?php echo $lang['bookings']; ?>!</strong> 
+                    <?php echo $lang['pending_bookings_alert']; ?>
+                    <a href="manage_bookings.php" class="btn btn-warning btn-sm ml-4"><?php echo $lang['view_bookings']; ?></a>
                 </div>
             <?php endif; ?>
         </main>
     </div>
 
+    <!-- Language JavaScript -->
+    <script>
+        // Make language available globally
+        window.lang = <?php echo json_encode($lang); ?>;
+        
+        // Initialize notification system
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.NotificationSystem) {
+                window.notificationSystem = new NotificationSystem();
+            }
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            const dropdown = document.getElementById('language-dropdown');
+            const switcher = document.querySelector('.language-switcher');
+            
+            if (dropdown && switcher && !switcher.contains(e.target)) {
+                dropdown.classList.remove('show');
+            }
+        });
+        
+        // Mobile menu toggle
+        function toggleMobileMenu() {
+            const nav = document.querySelector('.navbar-nav');
+            nav.classList.toggle('active');
+        }
+        
+        // Close mobile menu when clicking outside
+        document.addEventListener('click', function(e) {
+            const nav = document.querySelector('.navbar-nav');
+            const toggle = document.querySelector('.mobile-menu-toggle');
+            if (toggle && nav && !nav.contains(e.target) && !toggle.contains(e.target)) {
+                nav.classList.remove('active');
+            }
+        });
+    </script>
+
+    <!-- Notification System -->
+    <script src="../assets/js/notifications.js"></script>
+    <script src="../assets/js/main.js"></script>
 </body>
 </html>

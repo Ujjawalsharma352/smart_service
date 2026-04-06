@@ -90,7 +90,7 @@ if (isset($_GET['search'])) {
             <a href="../index.php" class="navbar-brand">
                 🔧 Smart Service Finder
             </a>
-            <button class="mobile-menu-toggle" onclick="toggleMobileMenu()">☰</button>
+          
             <ul class="navbar-nav">
                 <li><a href="dashboard.php">Dashboard</a></li>
                 <li><a href="manage_users.php" class="active">Users</a></li>

@@ -145,6 +145,7 @@ function showNotification(message, type = 'info', duration = 5000) {
     notification.style.zIndex = '9999';
     notification.style.maxWidth = '400px';
     notification.style.boxShadow = 'var(--shadow-lg)';
+    notification.style.cursor = 'pointer';
     
     document.body.appendChild(notification);
     
@@ -174,6 +175,47 @@ function showNotification(message, type = 'info', duration = 5000) {
                 notification.remove();
             }
         }, 300);
+    });
+}
+
+function getAppBaseUrl() {
+    const parts = window.location.pathname.split('/').filter(Boolean);
+    const appIndex = parts.indexOf('smart_service');
+    return appIndex >= 0 ? '/' + parts.slice(0, appIndex + 1).join('/') : '';
+}
+
+function getLanguageHandlerUrl(lang) {
+    return getAppBaseUrl() + '/notifications/language_helper.php?lang=' + encodeURIComponent(lang);
+}
+
+function changeLanguage(lang) {
+    window.location.href = getLanguageHandlerUrl(lang);
+}
+
+function initFloatingLanguageSwitcher() {
+    if (document.getElementById('global-language-switcher')) return;
+
+    const widget = document.createElement('div');
+    widget.id = 'global-language-switcher';
+    widget.innerHTML = `
+        <div class="language-switcher-widget">
+            <button type="button" class="language-switcher-button">🌐</button>
+            <div class="language-switcher-menu">
+                <a href="${getLanguageHandlerUrl('en')}">English</a>
+                <a href="${getLanguageHandlerUrl('hi')}">हिन्दी</a>
+                <a href="${getLanguageHandlerUrl('fr')}">Français</a>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(widget);
+
+    widget.querySelector('.language-switcher-button').addEventListener('click', (event) => {
+        event.stopPropagation();
+        widget.classList.toggle('open');
+    });
+
+    document.addEventListener('click', () => {
+        widget.classList.remove('open');
     });
 }
 
@@ -484,6 +526,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initDatePicker();
     initImagePreview();
     initPrint();
+    initFloatingLanguageSwitcher();
     
     // Auto-hide alerts after 5 seconds
     const alerts = $$('.alert:not(.notification)');

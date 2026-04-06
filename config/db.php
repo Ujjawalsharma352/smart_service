@@ -2,10 +2,10 @@
 // Database Configuration for Smart Local Service Finder
 
 class Database {
-    private $host = "ftpupload.net";
-    private $username = "if0_41552769";
-    private $password = "udddOIB7vEW3H";
-    private $dbname = "if0_41552769_smartservice";
+    private $host = "localhost";
+    private $username = "root";
+    private $password = "";
+    private $dbname = "smart_service";
     private $conn;
     
     public function __construct() {

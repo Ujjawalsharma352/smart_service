@@ -1,5 +1,6 @@
 <?php
 require_once '../config.php';
+require_once '../../notifications/notification_functions.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     APIAuth::requireAuth();
@@ -52,6 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if ($conn->query($sql)) {
         $bookingId = $conn->insert_id;
+        createBookingNotifications($bookingId, $userId, $service['provider_id'], $service['title'], 'pending');
         
         // Get created booking details
         $booking = $conn->query("

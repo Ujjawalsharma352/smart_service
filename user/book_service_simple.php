@@ -1,5 +1,7 @@
 <?php
 require_once '../config/db.php';
+require_once '../notifications/notification_functions.php';
+require_once '../notifications/language_helper.php';
 
 // Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
@@ -47,6 +49,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo "<div id='booking-status' class='booking-status pending'>Status: PENDING</div>";
             echo "<p style='color: blue;'>📧 Your booking is being processed. The provider will confirm shortly.</p>";
             echo "<p style='color: gray;'>🔄 This page will automatically update when the status changes.</p>";
+            
+            // Create notifications for user, provider, and admin
+            createBookingNotifications($bookingId, $userId, $service['provider_id'], $service['title'], 'pending');
             
             // Verify booking was inserted
             $verify = $conn->query("SELECT * FROM bookings WHERE id = $bookingId")->fetch_assoc();

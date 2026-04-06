@@ -1,5 +1,7 @@
 <?php
 require_once '../config/db.php';
+require_once '../notifications/notification_functions.php';
+require_once '../notifications/language_helper.php';
 
 // Check if user is logged in
 if (!isLoggedIn()) {
@@ -59,6 +61,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $bookingId = $conn->insert_id;
             $success = "🎉 Booking successful! Your booking ID is: $bookingId";
             error_log("BOOKING SUCCESS - ID: $bookingId");
+            
+            // Create notifications for user, provider, and admin
+            createBookingNotifications($bookingId, $userId, $service['provider_id'], $service['title'], 'pending');
             
             // Verify booking was inserted
             $verify = $conn->query("SELECT * FROM bookings WHERE id = $bookingId")->fetch_assoc();

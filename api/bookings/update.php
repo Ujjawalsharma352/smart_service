@@ -1,5 +1,6 @@
 <?php
 require_once '../config.php';
+require_once '../../notifications/notification_functions.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     APIAuth::requireAuth();
@@ -95,6 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // Update booking
     if ($conn->query("UPDATE bookings SET status = '$newStatus' WHERE id = $bookingId")) {
+        createStatusUpdateNotifications($bookingId, $newStatus, $booking['user_id'], $booking['provider_id']);
         APIResponse::success([
             'booking_id' => $bookingId,
             'new_status' => $newStatus

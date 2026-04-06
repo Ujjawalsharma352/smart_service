@@ -1,5 +1,7 @@
 <?php
 require_once '../config/db.php';
+require_once '../notifications/notification_functions.php';
+require_once '../notifications/language_helper.php';
 requireRole('provider');
 
 $providerId = getUserId();
@@ -13,10 +15,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $newStatus = clean_input($_POST['status']);
         
         // Verify booking belongs to this provider
-        $checkBooking = $conn->query("SELECT provider_id FROM bookings WHERE id = $bookingId")->fetch_assoc();
+        $checkBooking = $conn->query("SELECT * FROM bookings WHERE id = $bookingId")->fetch_assoc();
         if ($checkBooking && $checkBooking['provider_id'] == $providerId) {
             $conn->query("UPDATE bookings SET status = '$newStatus' WHERE id = $bookingId");
             $success = "Booking status updated successfully";
+            
+            // Send booking status notifications
+            createStatusUpdateNotifications($bookingId, $newStatus, $checkBooking['user_id'], $checkBooking['provider_id']);
         }
     }
 }
